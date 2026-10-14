@@ -8,13 +8,12 @@ def main(work):
     source = work / 'source'
     module = source / 'android/SherpaOnnxAar/sherpa_onnx'
     api_source = module / 'src/main/java'
-    api_target = module / 'src/no-tts/kotlin'
+    # Keep upstream's default src/main/java for both AGP and Kotlin 1.7.20.
+    # Do not copy bindings into a second root: Kotlin retains its default roots
+    # even when only AndroidSourceSet.java is redirected.
     for kotlin in api_source.rglob('*.kt'):
         if kotlin.name in {'Tts.kt', 'OfflineSpeakerDiarization.kt'}:
-            continue
-        dest = api_target / kotlin.relative_to(api_source)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(kotlin, dest)
+            kotlin.unlink()
     wrapper = source / 'android/SherpaOnnxAar/gradle/wrapper/gradle-wrapper.properties'
     with wrapper.open('a', encoding='utf-8') as out:
         out.write('\ndistributionSha256Sum=9631d53cf3e74bfa726893aee1f8994fee4e060c401335946dba2156f440f24c\n')
@@ -28,7 +27,6 @@ android {
     namespace = "com.k2fsa.sherpa.onnx"
     compileSdk = 34
     defaultConfig { minSdk = 24 }
-    sourceSets.getByName("main").java.setSrcDirs(listOf("src/no-tts/kotlin"))
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8

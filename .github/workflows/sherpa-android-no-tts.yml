@@ -36,11 +36,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Configure pinned Android Command-line Tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          cmdline-tools-version: '12266719'
+          packages: 'platform-tools'
+          accept-android-sdk-licenses: 'true'
+          log-accepted-android-sdk-licenses: 'false'
       - name: Install free Android build tools on the ephemeral runner
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "platforms;android-34" "build-tools;34.0.0"
+          command -v sdkmanager
+          sdkmanager --version
+          test -n "${ANDROID_HOME:-}"
+          test -d "$ANDROID_HOME"
+          sdkmanager --sdk_root="$ANDROID_HOME" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "platforms;android-34" "build-tools;34.0.0"
           echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/cmake/$CMAKE_VERSION/bin" >> "$GITHUB_PATH"
       - name: Build native library and standalone AAR (not the Sailing Setup APK)

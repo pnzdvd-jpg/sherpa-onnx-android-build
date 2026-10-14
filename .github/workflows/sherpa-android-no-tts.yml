@@ -51,8 +51,34 @@ jobs:
           sdkmanager --version
           test -n "${ANDROID_HOME:-}"
           test -d "$ANDROID_HOME"
-          sdkmanager --sdk_root="$ANDROID_HOME" --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "platforms;android-34" "build-tools;34.0.0"
-          echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          # Google repository2-1.xml: ndk;28.1.13356709, Linux r28b.
+          # Retain the exact NDK; do not silently use the runner's default version.
+          test "$NDK_VERSION" = '28.1.13356709'
+          ndk_archive="$RUNNER_TEMP/android-ndk-r28b-linux.zip"
+          ndk_parent="$RUNNER_TEMP/sherpa-ndk-r28b"
+          test ! -e "$ndk_parent"
+          curl --fail --location --retry 3 --connect-timeout 30 --max-time 900 \
+            --proto '=https' --proto-redir '=https' \
+            'https://dl.google.com/android/repository/android-ndk-r28b-linux.zip' \
+            --output "$ndk_archive"
+          test "$(stat -c '%s' "$ndk_archive")" = '722264879'
+          echo "f574d3165405bd59ffc5edaadac02689075a729f  $ndk_archive" | sha1sum --check
+          sha256sum "$ndk_archive"
+          unzip -tq "$ndk_archive"
+          mkdir -p "$ndk_parent"
+          unzip -q "$ndk_archive" -d "$ndk_parent"
+          ndk_dir="$ndk_parent/android-ndk-r28b"
+          grep -Eq '^Pkg.Revision[[:space:]]*=[[:space:]]*28\.1\.13356709[[:space:]]*$' "$ndk_dir/source.properties"
+          test -f "$ndk_dir/build/cmake/android.toolchain.cmake"
+          test -x "$ndk_dir/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          test -x "$ndk_dir/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          test -x "$ndk_dir/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          "$ndk_dir/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version
+          cat "$ndk_dir/source.properties"
+          sdkmanager --sdk_root="$ANDROID_HOME" --install "cmake;$CMAKE_VERSION" "platforms;android-34" "build-tools;34.0.0"
+          test -x "$ANDROID_HOME/cmake/$CMAKE_VERSION/bin/cmake"
+          test -x "$ANDROID_HOME/cmake/$CMAKE_VERSION/bin/ninja"
+          echo "ANDROID_NDK=$ndk_dir" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/cmake/$CMAKE_VERSION/bin" >> "$GITHUB_PATH"
       - name: Build native library and standalone AAR (not the Sailing Setup APK)
         shell: bash

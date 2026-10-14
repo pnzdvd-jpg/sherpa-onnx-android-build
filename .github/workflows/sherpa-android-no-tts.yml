@@ -1,0 +1,62 @@
+name: Prepare sherpa 1.13.8 Android ARM64 without TTS
+
+# Preparation only: no push/PR/schedule trigger, no app build or publication.
+on:
+  workflow_dispatch:
+    inputs:
+      authorized:
+        description: 'Owner authorized execution and verified free runner/artifact usage and no paid overage'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sherpa-no-tts-arm64
+  cancel-in-progress: false
+
+jobs:
+  library:
+    # Fail closed on private repositories: do not consume unverified paid minutes.
+    if: ${{ inputs.authorized && github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NDK_VERSION: 28.1.13356709
+      CMAKE_VERSION: 3.22.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools/sherpa-no-tts
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install free Android build tools on the ephemeral runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmake/$CMAKE_VERSION/bin" >> "$GITHUB_PATH"
+      - name: Build native library and standalone AAR (not the Sailing Setup APK)
+        shell: bash
+        run: bash tools/sherpa-no-tts/build.sh "$RUNNER_TEMP/sherpa-no-tts"
+      - name: Verify ELF, symbols, packaging, dependency inventory and hashes
+        shell: bash
+        run: |
+          python3 tools/sherpa-no-tts/verify.py \
+            "$RUNNER_TEMP/sherpa-no-tts" \
+            --llvm-bin "$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+      - name: Upload candidate for review only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sherpa-1.13.8-no-tts-arm64-candidate
+          path: ${{ runner.temp }}/sherpa-no-tts/result/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0

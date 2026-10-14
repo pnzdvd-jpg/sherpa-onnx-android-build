@@ -46,6 +46,23 @@ def check_cache(cache):
             raise ValueError(f'Missing build setting: {name}={value}')
 
 
+def verified_onnx_notices(root, evidence=None):
+    evidence = evidence or pathlib.Path(__file__).parent / 'license-evidence/onnxruntime-1.28.2'
+    manifest = json.loads((evidence / 'provenance.json').read_text())
+    if manifest['version'] != '1.28.2':
+        raise ValueError('Unexpected ONNX Runtime evidence version')
+    binary = root / 'jni/arm64-v8a/libonnxruntime.so'
+    if hashlib.sha256(binary.read_bytes()).hexdigest() != manifest['arm64_library_sha256']:
+        raise ValueError('ONNX Runtime binary does not match verified license provenance')
+    notices = []
+    for name in ('LICENSE', 'ThirdPartyNotices.txt'):
+        p = evidence / name
+        if hashlib.sha256(p.read_bytes()).hexdigest() != manifest['notice_sha256'][name]:
+            raise ValueError('ONNX Runtime license evidence checksum mismatch')
+        notices.append(p)
+    return notices + [evidence / 'provenance.json']
+
+
 def main(work, llvm):
     result = work / 'result'
     aar = result / 'sherpa-onnx-1.13.8-no-tts-arm64.aar'
@@ -104,13 +121,16 @@ def main(work, llvm):
         if FORBIDDEN.search(root.name):
             raise ValueError(f'Unexpected dependency: {root.name}')
         notices = [p for p in root.rglob('*') if p.is_file() and re.match(r'^(LICENSE|LICENCE|COPYING|NOTICE|COPYRIGHT|ThirdPartyNotices)([._-]|$)', p.name, re.I)]
+        external_evidence = root.name == 'onnxruntime-src'
+        if external_evidence:
+            notices = verified_onnx_notices(root)
         if not notices:
             raise ValueError(f'No license evidence for {root.name}; manual resolution required')
         for p in notices:
-            dest = license_root / root.name / p.relative_to(root)
+            dest = license_root / root.name / (p.name if external_evidence else p.relative_to(root))
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(p, dest)
-        license_inventory.append({'dependency': root.name, 'notice_files': [str(p.relative_to(root)) for p in notices]})
+        license_inventory.append({'dependency': root.name, 'notice_files': [p.name if external_evidence else str(p.relative_to(root)) for p in notices]})
     ndk = llvm.parents[4]
     ndk_notices = list(ndk.glob('NOTICE*'))
     if not ndk_notices:
